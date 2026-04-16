@@ -1,0 +1,37 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.superpowers
+.python-version
+
+# Virtual environments
+.venv
+
+# Runtime data
+work_space/
+store/
+data/
+tests/
+old_file/
+docs/
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# code agent
+.claude
+
+
+

@@ -1,0 +1,3 @@
+from nanoclaw.config import OWNER_ID, TELEGRAM_BOT_TOKEN
+print("OWNER_ID:", OWNER_ID)
+print("TELEGRAM_BOT_TOKEN:", TELEGRAM_BOT_TOKEN)
