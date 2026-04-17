@@ -230,7 +230,93 @@ ANTHROPIC_BASE_URL=
 SCHEDULER_INTERVAL=60
 ```
 
-### 4. 理解每个配置项
+### 4. 创建 Telegram Bot，并拿到 Bot Token
+
+如果你还没有自己的 Telegram Bot，需要先通过 **@BotFather** 创建。
+
+步骤如下：
+
+1. 打开 Telegram，搜索 `@BotFather`
+2. 进入与 BotFather 的对话
+3. 发送：
+
+```text
+/newbot
+```
+
+4. BotFather 会要求你输入：
+   - 一个 bot 显示名称
+   - 一个 bot 用户名
+
+用户名需要注意：
+
+- 必须以 `bot` 结尾
+- 例如：`nano_openclaw_bot`、`my_memory_bot`
+
+5. 创建完成后，BotFather 会返回一段 HTTP API Token，大致长这样：
+
+```text
+123456789:AAExampleYourTelegramBotToken
+```
+
+把它填进：
+
+```env
+TELEGRAM_BOT_TOKEN=...
+```
+
+### 5. 找到你自己的 Telegram 数字用户 ID（`OWNER_ID`）
+
+Nano OpenClaw 目前是单 owner 模式，所以你还需要知道自己 Telegram 账号的数字用户 ID。
+
+最稳妥的方式，是直接使用 Telegram 官方 Bot API 的 `getUpdates`。
+
+步骤如下：
+
+1. 先在 Telegram 里给你刚创建的 bot 发一条消息，例如：
+
+```text
+/start
+```
+
+2. 然后在终端执行：
+
+```bash
+curl "https://api.telegram.org/bot<你的BotToken>/getUpdates"
+```
+
+把 `<你的BotToken>` 替换成你从 BotFather 拿到的真实 token。
+
+3. 在返回的 JSON 里，找到类似下面的位置：
+
+```json
+"from": {
+  "id": 123456789,
+  ...
+}
+```
+
+其中这个：
+
+```text
+123456789
+```
+
+就是你的 Telegram 数字用户 ID。
+
+把它填进：
+
+```env
+OWNER_ID=123456789
+```
+
+如果 `getUpdates` 没返回你想要的内容，通常优先检查：
+
+- 你是否已经至少给 bot 发过一条消息
+- 是否已经有别的 bot 进程在抢占 updates
+- 最好在启动 `uv run main.py` 之前先执行这条 `curl`
+
+### 6. 理解每个配置项
 
 - `TELEGRAM_BOT_TOKEN`
   你的 Telegram bot token，从 BotFather 获取。
@@ -248,7 +334,7 @@ SCHEDULER_INTERVAL=60
 - `SCHEDULER_INTERVAL`
   可选项。调度器每隔多少秒扫描一次是否有到期任务，默认是 `60` 秒。
 
-### 5. 启动项目
+### 7. 启动项目
 
 执行：
 
@@ -267,7 +353,7 @@ INFO | Scheduler started
 INFO | Bot is running...
 ```
 
-### 6. 确认运行时目录已创建
+### 8. 确认运行时目录已创建
 
 第一次启动后，项目会自动创建这些目录和文件：
 
@@ -280,7 +366,7 @@ INFO | Bot is running...
 
 这些都是运行时数据，默认不会进入 git。
 
-### 7. 在 Telegram 中验证
+### 9. 在 Telegram 中验证
 
 打开 Telegram，找到你的 bot，发送：
 
@@ -293,6 +379,13 @@ INFO | Bot is running...
 
 - `OWNER_ID` 填错了
 - 你发消息的 Telegram 账号不是配置里的那个 owner
+
+## Telegram 官方参考资料
+
+如果你想看 Telegram 官方文档，对应链接如下：
+
+- BotFather 和创建 Bot： https://core.telegram.org/bots/features
+- Bot API 与 `getUpdates`： https://core.telegram.org/bots/api
 
 ## 如何使用
 

@@ -221,7 +221,87 @@ ANTHROPIC_BASE_URL=
 SCHEDULER_INTERVAL=60
 ```
 
-#### What each variable means
+### 4. Create your Telegram bot and get the bot token
+
+If you do not already have a Telegram bot, create one through **@BotFather**.
+
+Step by step:
+
+1. Open Telegram and search for `@BotFather`
+2. Start a chat with BotFather
+3. Send:
+
+```text
+/newbot
+```
+
+4. BotFather will ask for:
+   - a bot display name
+   - a bot username
+
+Username note:
+
+- the username must end with `bot`
+- examples: `nano_openclaw_bot`, `my_memory_bot`
+
+5. After creation, BotFather will return an HTTP API token that looks like:
+
+```text
+123456789:AAExampleYourTelegramBotToken
+```
+
+Put that token into:
+
+```env
+TELEGRAM_BOT_TOKEN=...
+```
+
+### 5. Find your Telegram numeric user ID (`OWNER_ID`)
+
+Nano OpenClaw is owner-locked, so you also need your Telegram numeric user ID.
+
+The most reliable method is to use Telegram's official Bot API with `getUpdates`.
+
+Step by step:
+
+1. Open Telegram and send any message to your bot, for example:
+
+```text
+/start
+```
+
+2. In your terminal, run:
+
+```bash
+curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates"
+```
+
+Replace `<YOUR_BOT_TOKEN>` with the real token from BotFather.
+
+3. In the returned JSON, find a structure like:
+
+```json
+"from": {
+  "id": 123456789,
+  ...
+}
+```
+
+That `id` is your Telegram numeric user ID.
+
+Put it into:
+
+```env
+OWNER_ID=123456789
+```
+
+If `getUpdates` returns nothing useful:
+
+- make sure you have sent at least one message to the bot
+- make sure no other running bot instance is already consuming updates
+- try the command before starting `uv run main.py`
+
+### 6. What each variable means
 
 - `TELEGRAM_BOT_TOKEN`
   Your bot token from BotFather.
@@ -238,7 +318,7 @@ SCHEDULER_INTERVAL=60
 - `SCHEDULER_INTERVAL`
   Optional. Controls how often the scheduler scans for due tasks. Default is `60` seconds.
 
-### 4. Start the bot
+### 7. Start the bot
 
 Run:
 
@@ -257,7 +337,7 @@ INFO | Scheduler started
 INFO | Bot is running...
 ```
 
-### 5. Verify the runtime directories
+### 8. Verify the runtime directories
 
 On first startup, the project will automatically create:
 
@@ -270,7 +350,7 @@ On first startup, the project will automatically create:
 
 These are runtime artifacts and are intentionally ignored by git.
 
-### 6. Verify Telegram access
+### 9. Verify Telegram access
 
 Open Telegram and talk to your bot:
 
@@ -280,6 +360,13 @@ Open Telegram and talk to your bot:
 
 If `OWNER_ID` is correct, the bot should respond.  
 If it stays silent, the most likely issue is that `OWNER_ID` does not match your Telegram account.
+
+## Official Telegram References
+
+If you want the official Telegram references behind the setup steps:
+
+- BotFather and bot creation: https://core.telegram.org/bots/features
+- Bot API and `getUpdates`: https://core.telegram.org/bots/api
 
 ## How To Use It
 
