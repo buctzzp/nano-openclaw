@@ -3,211 +3,445 @@
 
 # Nano OpenClaw
 
-> 一个具备长期记忆、工作区感知与工具执行能力的个人自动化助手运行时，Telegram 只是它当前的入口。
+> 一个具备长期记忆、工作区感知、定时执行与工具调用能力的个人自动化助手运行时，Telegram 只是它当前的入口。
 
-**Nano OpenClaw 面向的是希望真正“做事”的个人 Agent 系统的开发者。**  
-它不是简单的聊天封装，而是一个可以记忆、读写文件、调用工具、在真实工作目录中运行的个人自动化助手底座。
+Nano OpenClaw 是一个面向开发者的个人 Agent 项目。  
+它并不是简单地把大模型套在 Telegram 外面，而是把 Telegram、Claude Code SDK、MCP 工具、短期会话续接、长期工作区记忆以及轻量级调度器整合成了一个单用户自动化系统。
 
 <p>
-  <a href="#项目优势"><strong>项目优势</strong></a> ·
+  <a href="#为什么是-nano-openclaw"><strong>项目定位</strong></a> ·
+  <a href="#核心能力"><strong>核心能力</strong></a> ·
   <a href="#架构概览"><strong>架构</strong></a> ·
-  <a href="#项目结构"><strong>结构</strong></a> ·
-  <a href="#后续演进方向"><strong>路线图</strong></a> ·
+  <a href="#快速开始"><strong>快速开始</strong></a> ·
+  <a href="#手把手配置流程"><strong>完整配置流程</strong></a> ·
+  <a href="#如何使用"><strong>如何使用</strong></a> ·
   <a href="README.md"><strong>English</strong></a>
 </p>
 
-Nano OpenClaw 是一个面向个人自动化场景的 AI 助手项目。  
-Telegram 只是它当前的交互入口，真正的核心是一个具备记忆、工作区、工具调用与持续演化能力的 Agent 运行系统。
+## 为什么是 Nano OpenClaw
 
-这不是一个“套了 Telegram 壳子的聊天机器人”，而是一个正在成型的个人自动化助手底座。
+很多 Telegram AI Bot 本质上只是一个“消息中转层”：
 
-## 项目定位
+- 收到一条消息
+- 发给模型
+- 再把结果回给用户
 
-很多 Telegram AI Bot 本质上只是把模型 API 包了一层消息收发：
-
-- 能聊天
-- 能问答
-- 但不能真正长期工作
+这种方式可以聊天，但很难真正承担“个人自动化助手”的角色。
 
 Nano OpenClaw 的设计思路不一样。它强调的是：
 
-- 助手应该有自己的工作区
-- 助手应该有持续记忆，而不是只记住当前一轮对话
-- 助手应该能读写文件、调用工具、处理真实任务
-- Telegram 只是入口，未来完全可以替换为别的交互层
+- 助手要有自己的工作区
+- 助手要有跨会话记忆
+- 助手要能调用工具、读写文件、执行任务
+- 助手要能安排未来的工作，而不只是当下回答一句话
+- Telegram 只是交互入口，不是系统本体
 
-因此，这个项目更接近一个“个人 Agent 运行时”，而不是一个普通 Bot Demo。
+所以，这个项目更接近一个“个人 Agent 运行时”，而不是一个普通聊天 Bot Demo。
 
-## 项目优势
+## 核心能力
 
-### 1. 记忆不是临时的，而是分层的
+### 持久记忆
 
-Nano OpenClaw 同时具备两层记忆：
+Nano OpenClaw 目前有多层记忆结构：
 
-- 通过 `session_id` 维持会话连续性
+- 通过 `session_id` 实现短期上下文延续
 - 通过 `work_space/claude.md` 维护长期记忆
-- 通过 `work_space/conversations/` 保存按日期归档的历史对话
+- 通过 `work_space/conversations/` 保存按日期归档的对话记录
 
-这意味着助手既能延续当前上下文，也能逐步沉淀长期信息。
+这意味着它既能接上上一次会话，也能逐步沉淀长期信息。
 
-### 2. 以工作区为中心，而不是以聊天窗口为中心
+### 以工作区为中心的执行模型
 
-这个项目不是无状态的消息回复器。  
+这个项目不是无状态消息回复器。  
 Agent 运行时绑定了真实工作区，可以：
 
 - 读取和修改文件
-- 维护自己的记忆文件
-- 搜索归档对话
-- 调用工具处理任务
-- 在需要时执行 shell 命令
+- 编辑文本内容
+- 搜索历史归档
+- 维护自己的长期记忆文件
+- 执行 shell 命令
+- 通过 Claude 工具访问网络能力
 
-这让它具备了“做事”的能力，而不只是“说话”的能力。
+### Telegram 作为人与系统的接口
 
-### 3. 基于 Claude Code SDK，但不是简单套壳
+Telegram 目前是项目的主要交互入口。  
+Bot 可以：
 
-项目使用 `claude-agent-sdk` 作为底层 Agent Runtime，同时在其上构建了自己的工程能力：
+- 接收消息与命令
+- 在聊天窗口中直接回复
+- 通过 MCP 工具主动给用户发消息
+- 通过 `OWNER_ID` 限制只有一个指定用户可使用
 
-- 自定义 system prompt 组装
-- 会话持久化
-- Telegram 消息桥接
-- MCP 方式的助手回发消息
-- 工具流式日志记录
+### 定时任务能力
 
-因此它不是一层薄封装，而是一个有明确系统边界的上层实现。
+项目已经包含轻量级调度能力和 SQLite 任务存储。  
+Agent 可以通过 MCP 工具管理定时任务，例如：
 
-### 4. 架构已经模块化，不再是单文件脚本
+- `schedule_task`
+- `list_tasks`
+- `pause_task`
+- `resume_task`
+- `cancel_task`
 
-当前有效实现已经拆分到 `src/nanoclaw/` 下，核心模块分工清晰，包括：
+### 模块化结构
 
-- 应用启动装配
-- 配置和路径管理
-- 工作区准备
+当前主线代码已经拆分到 `src/nanoclaw/` 下，主要模块包括：
+
+- 应用启动
+- Telegram bot 组装
+- Claude Agent 执行
+- MCP 工具注册
+- 调度器执行
+- 数据库存储
+- session 持久化
+- 工作区初始化
+- 日志
 - 对话归档
-- session 存储
-- MCP 工具接入
-- Agent 执行层
-- Telegram handlers
-- 日志模块
-
-这使得项目后续继续演进时，不会陷入“单文件越来越大、越来越难维护”的状态。
 
 ## 架构概览
 
 ```mermaid
 flowchart TD
     User[Telegram 用户]
-    Telegram[Telegram 接口层]
-    Handlers[消息处理层]
-    Agent[Agent Runtime]
-    Session[Session Store]
-    Workspace[Workspace / claude.md]
-    Archive[Conversation Archive]
-    MCP[MCP 消息工具]
+    Telegram[Telegram 接口]
+    Bot[bot.py]
+    Agent[agent.py]
+    MCP[mcp.py]
+    Session[session_control.py]
+    Workspace[work_space / claude.md]
+    Archive[conversations/*.md]
+    Scheduler[scheduler.py]
+    DB[SQLite 任务存储]
     Claude[Claude Code SDK]
 
     User --> Telegram
-    Telegram --> Handlers
-    Handlers --> Agent
+    Telegram --> Bot
+    Bot --> Agent
+    Agent --> MCP
     Agent --> Session
     Agent --> Workspace
     Agent --> Archive
-    Agent --> MCP
     Agent --> Claude
+    Scheduler --> Agent
+    Scheduler --> DB
+    MCP --> DB
 ```
 
-这个结构里，Telegram 只承担交互入口的角色，真正的持续能力来自运行时、记忆层、工作区和工具系统。
+从用户角度看，它是一个 Telegram 助手；  
+从系统角度看，它真正的核心在运行时、记忆层、任务层和 Claude 执行层。
 
 ## 项目结构
 
 ```text
-main.py                    # 当前运行入口
+main.py                         # 启动入口
 src/nanoclaw/
-  app.py                   # 应用装配与启动
-  agent.py                 # Claude Agent 执行逻辑与锁
-  config.py                # 全局配置、路径、模板
-  conversation.py          # 对话归档
-  handlers.py              # Telegram 消息与命令处理
-  logging_utils.py         # 日志配置
-  mcp.py                   # MCP 工具注册
-  session_store.py         # session_id 持久化
-  workspace.py             # 工作区初始化与 system prompt 构建
+  app.py                        # 应用启动与运行时准备
+  bot.py                        # Telegram bot 组装与消息处理
+  agent.py                      # Claude Agent 执行逻辑
+  mcp.py                        # 暴露给 Agent 的 MCP 工具
+  scheduler.py                  # APScheduler 定时轮询
+  db.py                         # SQLite 任务数据库操作
+  config.py                     # 配置、路径、环境变量
+  session_control.py            # session_id 持久化
+  conversation.py               # 对话归档
+  workspace.py                  # 工作区初始化与 system prompt 构建
+  logging_utils.py              # 日志模块
 work_space/
-  claude.md                # 助手长期记忆
-  conversations/           # 按日期保存的历史对话
+  claude.md                     # 助手长期记忆
+  conversations/                # 按日期保存的历史对话
 data/
-  state.json               # 会话状态
-ep1.py ~ ep6.py            # 历史版本保留
+  state.json                    # 当前会话 session_id
+store/
+  nanoclaw.db                   # 定时任务数据库
 ```
+
+## 运行特征
+
+当前项目的运行形态是有意收窄的：
+
+- 单用户
+- Telegram long polling
+- 本地工作区执行
+- 本地 SQLite 持久化
+- 对 Agent 开放了较强的工具权限
+
+这很适合个人自动化助手，但不适合直接当成公开多用户服务上线。
+
+## 环境要求
+
+在运行项目之前，你至少需要准备：
+
+- Python `3.12+`
+- 本机安装好 [`uv`](https://docs.astral.sh/uv/)
+- 一个 Telegram bot token
+- 你自己的 Telegram 数字用户 ID
+- 一个可供 `claude-agent-sdk` 使用的 Anthropic 兼容 API Key
+
+## 快速开始
+
+如果你已经熟悉 Python 项目，最短路径是：
+
+```bash
+git clone https://github.com/buctzzp/nano-openclaw.git
+cd nano-openclaw
+uv sync
+# 手动创建 .env
+uv run main.py
+```
+
+然后去 Telegram 给你的 bot 发 `/start` 即可。
+
+如果你想严格按步骤配置，请继续看下面的完整流程。
+
+## 手把手配置流程
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/buctzzp/nano-openclaw.git
+cd nano-openclaw
+```
+
+### 2. 安装依赖
+
+本项目使用 `uv` 管理依赖。
+
+```bash
+uv sync
+```
+
+执行后会自动创建 `.venv/`，并根据 `pyproject.toml` / `uv.lock` 安装依赖。
+
+### 3. 创建 `.env`
+
+在项目根目录手动创建一个 `.env` 文件。
+
+建议内容如下：
+
+```env
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+OWNER_ID=your_telegram_numeric_user_id
+ANTHROPIC_API_KEY=your_api_key
+
+# 可选：如果你通过兼容网关访问模型，可以填写
+ANTHROPIC_BASE_URL=
+
+# 可选：定时任务轮询间隔（秒）
+SCHEDULER_INTERVAL=60
+```
+
+### 4. 理解每个配置项
+
+- `TELEGRAM_BOT_TOKEN`
+  你的 Telegram bot token，从 BotFather 获取。
+
+- `OWNER_ID`
+  你自己的 Telegram 数字用户 ID。  
+  当前项目是单 owner 模式，只有这个用户可以和 bot 正常交互。
+
+- `ANTHROPIC_API_KEY`
+  提供给 `claude-agent-sdk` 使用的模型 API Key。
+
+- `ANTHROPIC_BASE_URL`
+  可选项。只有在你使用兼容代理或中转网关时才需要填写。
+
+- `SCHEDULER_INTERVAL`
+  可选项。调度器每隔多少秒扫描一次是否有到期任务，默认是 `60` 秒。
+
+### 5. 启动项目
+
+执行：
+
+```bash
+uv run main.py
+```
+
+如果启动成功，你应该能看到类似这样的日志：
+
+```text
+INFO | Preparing runtime environment...
+INFO | Database initialized at ...
+INFO | Workspace ready at ...
+INFO | Starting Telegram bot...
+INFO | Scheduler started
+INFO | Bot is running...
+```
+
+### 6. 确认运行时目录已创建
+
+第一次启动后，项目会自动创建这些目录和文件：
+
+- `work_space/`
+- `work_space/claude.md`
+- `work_space/conversations/`
+- `data/`
+- `store/`
+- `store/nanoclaw.db`
+
+这些都是运行时数据，默认不会进入 git。
+
+### 7. 在 Telegram 中验证
+
+打开 Telegram，找到你的 bot，发送：
+
+```text
+/start
+```
+
+如果 `OWNER_ID` 正确，bot 应该会回复欢迎消息。  
+如果 bot 没有响应，最常见原因是：
+
+- `OWNER_ID` 填错了
+- 你发消息的 Telegram 账号不是配置里的那个 owner
+
+## 如何使用
+
+### 基础命令
+
+当前 bot 支持这些命令：
+
+- `/start`：开始对话
+- `/clear`：清除当前 Claude session
+- `/end`：结束当前交互
+
+### 普通对话
+
+你可以直接在 Telegram 里给它发消息，比如：
+
+- 问问题
+- 让它读取或修改工作区文件
+- 让它记住信息
+- 让它帮你安排任务
+
+Agent 会基于当前工作区运行，可能会：
+
+- 读写文件
+- 调用 MCP 工具
+- 延续之前的会话
+- 更新长期记忆
+
+### 记忆系统怎么工作
+
+当前项目的记忆主要分 3 层：
+
+1. `data/state.json`
+   保存当前 Claude `session_id`，用于下一轮继续会话。
+
+2. `work_space/claude.md`
+   保存长期记忆和项目级指令。
+
+3. `work_space/conversations/YYYY-MM-DD.md`
+   保存按日期归档的用户可见聊天记录。
+
+### 定时任务怎么用
+
+调度器会在 bot 启动时自动启动。
+
+当前版本不是通过独立 CLI 来创建任务，而是通过你和 agent 的自然语言交互，让 agent 自己调用定时任务 MCP 工具。
+
+例如你可以尝试：
+
+- `每小时提醒我喝水。`
+- `每天上午九点提醒我做今日计划。`
+- `在 2026-04-20 08:30:00 提醒我开会。`
+
+当任务到期时，调度器会：
+
+1. 从 SQLite 数据库里找出到期任务
+2. 包装任务提示词
+3. 调用一个专门的 task agent 去执行
+4. 尝试通过 `send_message` 通知用户
+
+## 运行注意事项
+
+### 这是单 owner 项目
+
+当前项目是明确的单用户设计：
+
+- 一个 Telegram owner
+- 一个本地运行时
+- 一个共享工作区
+- 一份当前交互会话状态
+
+这正适合个人自动化助手，但并不适合直接扩成公开多用户系统。
+
+### 工具权限较强
+
+当前 Claude 运行时开放了较强的工具权限。  
+这对自动化很有帮助，但也意味着你应该把它当成一个有能力修改本地工作区的 agent 来对待。
+
+建议：
+
+- 只在你信任的工作目录中运行
+- 不要暴露给不受信任的用户
+- 明确知道它能访问和修改什么
+
+### 运行时数据保存在本地
+
+重要运行时数据都存在本地目录里：
+
+- `data/`：短期 session 状态
+- `work_space/`：长期记忆与归档
+- `store/nanoclaw.db`：定时任务数据库
+
+如果你删除这些目录，相当于删除了 bot 的本地记忆和任务状态。
+
+## 常见问题排查
+
+### 出现 `telegram.error.Conflict`
+
+这表示同一个 bot token 还有另一个实例正在轮询 Telegram。
+
+常见原因：
+
+- 本机还有旧进程没退出
+- 另一台机器也在跑同一个 token
+- 后台残留进程没有正常结束
+
+### bot 启动了，但我发消息它不理我
+
+最常见原因是：
+
+- `OWNER_ID` 不对
+- 你当前 Telegram 账号不是配置里的 owner
+
+### 定时任务好像没触发
+
+你可以优先检查：
+
+- 任务是否真的写进了数据库
+- `SCHEDULER_INTERVAL` 是否过大
+- 进程是否持续运行到了任务到期时刻
 
 ## 技术栈
 
 - Python 3.12+
 - `python-telegram-bot`
 - `claude-agent-sdk`
+- `apscheduler`
+- `aiosqlite`
+- `croniter`
 - `python-dotenv`
-- 基于 `src/` 布局的工程化包结构
-
-## 当前已经具备的能力
-
-当前版本已经可以：
-
-- 通过 Telegram 接收消息与命令
-- 延续 Claude 会话
-- 在 `claude.md` 中维护长期记忆
-- 将对话按日期归档
-- 在真实工作区中调用 Claude 工具
-- 通过 Telegram 回发助手消息
-- 以模块化结构持续扩展
-
-## 当前边界
-
-这个项目已经具备明确方向，但它还不是一个“大而全”的平台。  
-当前版本并不试图立即做到：
-
-- 多用户平台化
-- 可随时打断的实时 Agent 调度器
-- 生产级任务编排系统
-- 通用自动化中台
-
-目前它更聚焦于：**单用户、个人场景、可持续演进的自动化助手**。
-
-## Coming Soon
-
-当前版本已经具备清晰的核心能力，但后续会继续朝更完整的个人自动化助手方向推进，重点包括：
-
-- 更丰富的 skill 体系，用于沉淀可复用的 Agent 能力
-- 定时任务与时间驱动的自动化机制
-- 更强的长期记忆组织与检索能力
-- 更清晰的可中断执行流
-- Telegram 之外的更多交互入口
-
-目标不是把项目做成臃肿的平台，而是在保持轻量的前提下，把它打磨成更锋利、更可靠的个人自动化运行时。
-
-## 后续演进方向
-
-这个项目后续非常适合继续向这些方向推进：
-
-- 可中断 Agent 执行
-- 更强的长期记忆检索策略
-- 更结构化的任务调度
-- Telegram 之外的更多交互入口
-- 运行时、记忆层、接口层的进一步解耦
-
-## 运行方式
-
-这是一个面向开发者的仓库。  
-如果你要在本地启动当前版本，最直接的方式是：
-
-```bash
-uv run main.py
-```
-
-前提是你已经准备好 `.env` 中所需的 Telegram 与模型相关配置。
+- `uv`
 
 ## 项目状态
 
-Nano OpenClaw 目前处于持续迭代阶段。  
-`ep1.py` 到 `ep6.py` 保留了项目历史演进轨迹，而 `src/nanoclaw/` 下的模块化实现是当前主线版本。
+Nano OpenClaw 现在已经可以作为个人自动化助手使用，但仍在持续演进中。
+
+当前已经具备的优势：
+
+- 持久记忆
+- 工作区中心执行
+- MCP 工具集成
+- 定时任务基础能力
+- 模块化代码结构
+
+后续重点演进方向：
+
+- 更丰富的 skill 体系
+- 更清晰的可中断执行流
+- 更强的记忆组织和检索能力
+- Telegram 之外的更多入口
 
 ## English Version
 
