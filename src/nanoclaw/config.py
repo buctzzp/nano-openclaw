@@ -52,6 +52,9 @@ DATE_DIR = BASE_DIR / "data"
 STATE_FILE = DATE_DIR / "state.json"
 CONVERSATION_DIR = WORK_SPACE / "conversations"
 ASSISTANT_NAME = "小黄"
+STORE_DIR = BASE_DIR / "store"
+DB_PATH = STORE_DIR / "nanoclaw.db"
+
 
 # 这个模板会在第一次启动时写入 `work_space/claude.md`。
 # 它的作用不是普通注释，而是给 Claude Code 提供一份“长期记忆说明书”。

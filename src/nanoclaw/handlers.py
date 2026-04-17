@@ -17,7 +17,7 @@ from telegram import Update
 from telegram.constants import ChatAction
 
 from .agent import run_agent
-from .config import OWNER_ID
+from .config import *
 from .conversation import archive_conversation
 from .logging_utils import LOGGER, configure_logging
 from .session_store import clear_session_id
@@ -87,17 +87,18 @@ async def handle_message(update: Update, context) -> None:
     # 这样用户在等待 LLM 返回时，不会觉得 bot 没有反应。
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
-    response = await run_agent(
+    response_text, archive_text = await run_agent(
         update.message.text,
         context.bot,
         chat_id,
+        str(DB_PATH)
     )
 
-    # 长期归档只保存用户消息和最终回复。
-    # 这样归档文件更像“聊天记录”，而不是“调试日志”。
-    archive_conversation(update.message.text, response)
-
     max_length = 4000
-    for i in range(0, len(response), max_length):
+    for i in range(0, len(response_text), max_length):
         # Telegram 单条消息有长度限制，所以长回复要手动切片发送。
-        await update.message.reply_text(response[i : i + max_length])
+        await update.message.reply_text(response_text[i : i + max_length])
+    
+    # 归档文本里既有过程中通过 `send_message` 发出去的消息，
+    # 也有最后的 ResultMessage 文本。
+    archive_conversation(update.message.text, archive_text)

@@ -16,15 +16,12 @@ import asyncio
 from typing import Any
 
 from claude_agent_sdk import (
-    AssistantMessage,
     ClaudeAgentOptions,
     ResultMessage,
-    TextBlock,
     create_sdk_mcp_server,
     query,
 )
-
-from .config import WORK_SPACE
+from .config import *
 from .logging_utils import LOGGER, configure_logging, log_stream_message
 from .mcp import create_mcp_server_tools
 from .session_store import load_session_id, save_session_id
@@ -38,7 +35,7 @@ from .workspace import build_system_prompt
 _agent_lock = asyncio.Lock()
 
 
-async def run_agent(prompt: str, bot: Any, chat_id: int) -> str:
+async def run_agent(prompt: str, bot: Any, chat_id: int, db_path:str) -> tuple[str, str]:
     """
     串行执行一次 agent 请求。
 
@@ -46,13 +43,20 @@ async def run_agent(prompt: str, bot: Any, chat_id: int) -> str:
     是为了把并发控制统一收口到这里。
     """
     async with _agent_lock:
-        return await _run_inner_agent(prompt, bot, chat_id)
+        return await _run_inner_agent(prompt, bot, chat_id,db_path)
 
 
-async def _run_inner_agent(prompt: str, bot: Any, chat_id: int) -> str:
-    """真正执行一次 Claude 查询。"""
+async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> tuple[str, str]:
+    """
+    真正执行一次 Claude 查询。
+
+    返回值是一个二元组：
+    - 第一个字符串：最终要继续发给 Telegram 的文本
+    - 第二个字符串：写入长期归档的文本
+    """
     configure_logging()
-    mcp_tools = create_mcp_server_tools(bot, chat_id)
+    sent_messages: list[str] = []
+    mcp_tools = create_mcp_server_tools(bot, chat_id, db_path, sent_messages=sent_messages)
 
     options = ClaudeAgentOptions(
         # 把 Claude Code 的工作目录固定到 `work_space/`，
@@ -98,7 +102,7 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int) -> str:
         ",".join(options.allowed_tools or []) or "-",
     )
 
-    response_parts: list[str] = []
+    result_text: str | None = None
     idx = 0
 
     async def _make_prompt(text: str):
@@ -113,21 +117,21 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int) -> str:
         async for message in query(prompt=_make_prompt(prompt), options=options):
             idx += 1
             log_stream_message(idx, message)
-            if isinstance(message, ResultMessage) and message.result:
-                # 注意：session_id 的保存放在 ResultMessage 阶段，
-                # 因为这是本轮对话的收尾事件，能确保我们拿到的是最终稳定的会话标识。
+            if isinstance(message, ResultMessage):
+                # 最终结果只认 ResultMessage。
+                # 这样“最终回复”只有一个真相源，不再混用 AssistantMessage 的 text。
                 save_session_id(message.session_id)
-            elif isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        # 这里只收集用户最终可见的文本块。
-                        # thinking / tool_use / tool_result 这些内部细节仍然会记日志，
-                        # 但不会拼进最终要发给 Telegram 的回复。
-                        response_parts.append(block.text)
+                if message.result:
+                    result_text = message.result
     except Exception as error:
         LOGGER.error("Error during agent execution: %s", error)
-        return f"Error: {error}"
+        error_text = f"Error: {error}"
+        return error_text, error_text
 
-    # AssistantMessage 里的文本已经够组成给用户看的最终回复了。
-    # 这里不再把 ResultMessage.result 再 append 一遍，避免内容重复。
-    return "\n".join(response_parts) or "Sorry, I couldn't get a response from Claude."
+    final_text = (result_text or "").strip() or "Sorry, I couldn't get a response from Claude."
+
+    archive_parts = [text.strip() for text in sent_messages if text and text.strip()]
+    archive_parts.append(final_text)
+    archive_text = "\n".join(archive_parts)
+
+    return final_text, archive_text
