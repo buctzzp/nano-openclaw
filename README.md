@@ -3,202 +3,425 @@
 
 # Nano OpenClaw
 
-> A personal automation assistant runtime with memory, workspace awareness, and tool execution, where Telegram is only the front door.
+> A personal automation assistant runtime with memory, workspace awareness, scheduled execution, and tool calling, where Telegram is only the entry point.
 
-**Nano OpenClaw is built for developers who want more than a chat wrapper.**  
-It is designed as a persistent personal agent system that can remember, inspect files, use tools, and operate inside a real working directory.
+Nano OpenClaw is a developer-facing personal agent project built around a persistent runtime rather than a thin chat wrapper.  
+It combines Telegram messaging, Claude Code SDK execution, MCP tools, short-term session continuation, long-term workspace memory, and a lightweight scheduler into one single-owner automation system.
 
 <p>
-  <a href="#core-strengths"><strong>Core Strengths</strong></a> ·
+  <a href="#why-nano-openclaw"><strong>Why</strong></a> ·
+  <a href="#core-capabilities"><strong>Capabilities</strong></a> ·
   <a href="#architecture-overview"><strong>Architecture</strong></a> ·
-  <a href="#project-structure"><strong>Structure</strong></a> ·
-  <a href="#roadmap-direction"><strong>Roadmap</strong></a> ·
+  <a href="#quick-start"><strong>Quick Start</strong></a> ·
+  <a href="#step-by-step-setup"><strong>Step-by-Step Setup</strong></a> ·
+  <a href="#how-to-use-it"><strong>Usage</strong></a> ·
   <a href="README_CN.md"><strong>中文版本</strong></a>
 </p>
 
-Nano OpenClaw is a personal automation assistant project built around a durable agent runtime, a persistent workspace, and a Telegram interface.
+## Why Nano OpenClaw
 
-Telegram is only the entry point. The real core of the project is an agent system that can keep memory, operate on files, call tools, maintain a working directory, and evolve into a broader personal automation platform.
+Most Telegram AI bots are stateless message relays. They can answer questions, but they do not really *work* as agents.
 
-## Why This Project Exists
+Nano OpenClaw is designed around a different model:
 
-Most Telegram AI bots are just thin chat wrappers around a model API. They can answer questions, but they do not really *work*.
+- the assistant has a real workspace
+- the assistant keeps memory across sessions
+- the assistant can call tools and operate on files
+- the assistant can schedule future work
+- Telegram is only the interface, not the whole system
 
-Nano OpenClaw is designed around a different idea:
+This makes the repository closer to a personal automation runtime than to a conventional bot demo.
 
-- The assistant should have a real workspace.
-- The assistant should be able to retain useful memory across sessions.
-- The assistant should be able to use tools, inspect files, and make changes.
-- The messaging layer should be replaceable; Telegram happens to be the current interface.
+## Core Capabilities
 
-That makes this repository closer to a personal agent runtime than to a conventional bot demo.
+### Persistent memory
 
-## Core Strengths
+Nano OpenClaw combines multiple layers of memory:
 
-### Persistent Memory Beyond a Single Chat Turn
+- short-term continuity through persisted `session_id`
+- long-term assistant memory in `work_space/claude.md`
+- daily conversation archive in `work_space/conversations/`
 
-Nano OpenClaw combines two layers of memory:
+That gives the agent both immediate context carry-over and durable project memory.
 
-- Session continuation through persisted `session_id`
-- Long-term project memory through `work_space/claude.md`
-- Daily conversation archives in `work_space/conversations/`
+### Workspace-centered execution
 
-This gives the assistant both short-horizon continuity and long-horizon recall.
-
-### Workspace-Centered Agent Design
-
-The assistant does not operate as a stateless chat endpoint. It runs against a dedicated workspace and can:
+The assistant runs against a dedicated workspace and can:
 
 - read and write files
-- edit project artifacts
-- inspect archived conversations
-- maintain assistant memory
-- execute shell commands when needed
+- edit text content
+- search archived conversations
+- maintain its own memory file
+- execute shell commands
+- search the web through Claude tools
 
-This makes the assistant useful for real automation flows instead of simple message-response interactions.
+### Telegram as the human interface
 
-### Claude Code SDK Integration
+Telegram is the current front door. The bot can:
 
-The project uses `claude-agent-sdk` as the agent runtime and augments it with:
+- receive messages and commands
+- reply directly in chat
+- send proactive messages through MCP tools
+- restrict access to a single configured owner
 
-- custom system prompt assembly
+### Scheduled task support
+
+The runtime includes a scheduler and a SQLite-backed task store.  
+The agent can create and manage scheduled tasks through MCP tools such as:
+
+- `schedule_task`
+- `list_tasks`
+- `pause_task`
+- `resume_task`
+- `cancel_task`
+
+### Modular codebase
+
+The active runtime is organized under `src/nanoclaw/`, with separate modules for:
+
+- app bootstrap
+- Telegram bot wiring
+- Claude agent execution
+- MCP tool registration
+- scheduler execution
+- DB operations
 - session persistence
-- Telegram messaging integration
-- MCP-based outbound assistant messaging
-- structured logging for tool and stream events
-
-### Modular Architecture
-
-The current active implementation is organized under `src/nanoclaw/` rather than being kept in a single script. The runtime is split into focused modules for:
-
-- application bootstrap
-- configuration and paths
-- workspace preparation
-- conversation archiving
-- session storage
-- MCP tool setup
-- agent execution
-- Telegram handlers
+- workspace initialization
 - logging
-
-This keeps the project maintainable as the assistant grows beyond a single interface or a single model setup.
+- conversation archiving
 
 ## Architecture Overview
 
 ```mermaid
 flowchart TD
-    User[User on Telegram]
+    User[Telegram User]
     Telegram[Telegram Interface]
-    Handlers[Telegram Handlers]
-    Agent[Agent Runtime]
-    Session[Session Store]
-    Workspace[Workspace / claude.md]
-    Archive[Conversation Archive]
-    MCP[MCP Messaging Tool]
+    Bot[bot.py]
+    Agent[agent.py]
+    MCP[mcp.py]
+    Session[session_control.py]
+    Workspace[work_space / claude.md]
+    Archive[conversations/*.md]
+    Scheduler[scheduler.py]
+    DB[SQLite task store]
     Claude[Claude Code SDK]
 
     User --> Telegram
-    Telegram --> Handlers
-    Handlers --> Agent
+    Telegram --> Bot
+    Bot --> Agent
+    Agent --> MCP
     Agent --> Session
     Agent --> Workspace
     Agent --> Archive
-    Agent --> MCP
     Agent --> Claude
+    Scheduler --> Agent
+    Scheduler --> DB
+    MCP --> DB
 ```
 
-The interface layer is intentionally thin. Telegram delivers messages, but the durable behavior lives in the runtime, memory, workspace, and tool layers.
+The human talks to Telegram, but the durable behavior lives in the runtime, workspace, task store, and Claude execution layer.
 
 ## Project Structure
 
 ```text
-main.py                    # Thin runtime entrypoint
+main.py                         # Entry point
 src/nanoclaw/
-  app.py                   # Application assembly and boot
-  agent.py                 # Claude agent execution and locking
-  config.py                # Shared settings, paths, templates
-  conversation.py          # Daily conversation archive
-  handlers.py              # Telegram command/message handlers
-  logging_utils.py         # Logging setup
-  mcp.py                   # MCP server tool registration
-  session_store.py         # session_id persistence
-  workspace.py             # Workspace bootstrap and system prompt build
+  app.py                        # Runtime bootstrap
+  bot.py                        # Telegram bot setup and handlers
+  agent.py                      # Claude agent execution
+  mcp.py                        # MCP tools exposed to the agent
+  scheduler.py                  # APScheduler task loop
+  db.py                         # SQLite task storage
+  config.py                     # Environment and path config
+  session_control.py            # session_id persistence
+  conversation.py               # Conversation archive writer
+  workspace.py                  # Workspace bootstrap and system prompt build
+  logging_utils.py              # Unified logging
 work_space/
-  claude.md                # Long-term assistant memory
-  conversations/           # Daily archived conversations
+  claude.md                     # Long-term assistant memory
+  conversations/                # Daily archived chat history
 data/
-  state.json               # Persisted session state
-ep1.py ~ ep6.py            # Historical versions kept for reference
+  state.json                    # Stored Claude session id
+store/
+  nanoclaw.db                   # Scheduled task database
 ```
+
+## Runtime Characteristics
+
+Current behavior is intentionally opinionated:
+
+- single-owner Telegram bot
+- long-polling, not webhook-based
+- local workspace execution
+- local SQLite persistence
+- agent tool permissions are intentionally broad for personal automation
+
+This is powerful, but it also means the project is best treated as a **personal developer tool**, not a hardened public multi-user service.
+
+## Requirements
+
+Before running the project, prepare the following:
+
+- Python `3.12+`
+- [`uv`](https://docs.astral.sh/uv/) installed locally
+- a Telegram bot token
+- your Telegram numeric user ID
+- an Anthropic-compatible API key usable by `claude-agent-sdk`
+
+## Quick Start
+
+If you already know your way around Python projects, the shortest path is:
+
+```bash
+git clone https://github.com/buctzzp/nano-openclaw.git
+cd nano-openclaw
+uv sync
+# create .env manually in the repository root
+uv run main.py
+```
+
+Then open Telegram, find your bot, send `/start`, and begin chatting.
+
+If you want the full detailed setup, follow the next section.
+
+## Step-by-Step Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/buctzzp/nano-openclaw.git
+cd nano-openclaw
+```
+
+### 2. Install dependencies
+
+This project is managed with `uv`.
+
+```bash
+uv sync
+```
+
+That will create `.venv/` and install dependencies from `pyproject.toml` and `uv.lock`.
+
+### 3. Create the `.env` file
+
+Create a file named `.env` in the repository root.
+
+Use this template:
+
+```env
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+OWNER_ID=your_telegram_numeric_user_id
+ANTHROPIC_API_KEY=your_api_key
+
+# Optional: only set this if you use a compatible proxy / gateway
+ANTHROPIC_BASE_URL=
+
+# Optional: scheduler polling interval in seconds
+SCHEDULER_INTERVAL=60
+```
+
+#### What each variable means
+
+- `TELEGRAM_BOT_TOKEN`
+  Your bot token from BotFather.
+
+- `OWNER_ID`
+  Your Telegram numeric user ID. The bot is owner-locked, so only this user can interact with it.
+
+- `ANTHROPIC_API_KEY`
+  The model credential used by `claude-agent-sdk`.
+
+- `ANTHROPIC_BASE_URL`
+  Optional. Only needed if you use a compatible custom endpoint.
+
+- `SCHEDULER_INTERVAL`
+  Optional. Controls how often the scheduler scans for due tasks. Default is `60` seconds.
+
+### 4. Start the bot
+
+Run:
+
+```bash
+uv run main.py
+```
+
+If startup is successful, you should see logs similar to:
+
+```text
+INFO | Preparing runtime environment...
+INFO | Database initialized at ...
+INFO | Workspace ready at ...
+INFO | Starting Telegram bot...
+INFO | Scheduler started
+INFO | Bot is running...
+```
+
+### 5. Verify the runtime directories
+
+On first startup, the project will automatically create:
+
+- `work_space/`
+- `work_space/claude.md`
+- `work_space/conversations/`
+- `data/`
+- `store/`
+- `store/nanoclaw.db`
+
+These are runtime artifacts and are intentionally ignored by git.
+
+### 6. Verify Telegram access
+
+Open Telegram and talk to your bot:
+
+```text
+/start
+```
+
+If `OWNER_ID` is correct, the bot should respond.  
+If it stays silent, the most likely issue is that `OWNER_ID` does not match your Telegram account.
+
+## How To Use It
+
+### Basic commands
+
+The bot currently exposes these Telegram commands:
+
+- `/start` — start the conversation
+- `/clear` — clear the persisted Claude session
+- `/end` — end the current interaction
+
+### Normal chatting
+
+You can simply ask questions or give instructions in Telegram.  
+The agent will run against the configured workspace and may:
+
+- read and edit files
+- use MCP tools
+- continue prior conversation context
+- update long-term memory
+
+### Memory behavior
+
+There are three important memory surfaces:
+
+1. `data/state.json`
+   Stores the current Claude `session_id` so the next request can continue the prior session.
+
+2. `work_space/claude.md`
+   Long-term assistant memory and project-specific instructions.
+
+3. `work_space/conversations/YYYY-MM-DD.md`
+   Daily archived user-visible conversations.
+
+### Scheduled tasks
+
+The scheduler starts automatically when the bot starts.
+
+You do not create tasks through a separate CLI yet.  
+Instead, tasks are created by asking the agent to schedule something, and the agent may use the scheduling MCP tools internally.
+
+Examples of scheduling-oriented prompts:
+
+- `Remind me every hour to drink water.`
+- `Every day at 9:00 AM, send me a short planning reminder.`
+- `At 2026-04-20 08:30:00, remind me to join the meeting.`
+
+When a task becomes due:
+
+- the scheduler reads it from SQLite
+- wraps the task prompt
+- runs a task-specific agent execution
+- expects the agent to notify the user with `send_message`
+
+## Operational Notes
+
+### This is a single-owner project
+
+The bot is intentionally restricted by `OWNER_ID`.
+
+- one Telegram owner
+- one local runtime
+- one shared workspace
+- one persisted interactive session
+
+This is the right shape for a personal automation assistant, but not for a public multi-user deployment.
+
+### Tool permissions are intentionally strong
+
+The Claude runtime is configured with broad workspace and command execution permissions.  
+That is useful for automation, but you should treat the project accordingly:
+
+- run it only in a workspace you control
+- do not expose it to untrusted users
+- review what the agent can access and modify
+
+### Runtime data is local
+
+Important runtime data is stored locally:
+
+- short-term session state in `data/`
+- long-term memory in `work_space/`
+- scheduled tasks in `store/nanoclaw.db`
+
+If you delete these directories, you are deleting the bot's local memory and task state.
+
+## Troubleshooting
+
+### `telegram.error.Conflict`
+
+This means another instance of the same bot token is already polling Telegram.
+
+Typical causes:
+
+- another local terminal is still running the bot
+- another machine is running the same token
+- an old background process did not exit cleanly
+
+### Bot starts but ignores your messages
+
+Most likely causes:
+
+- `OWNER_ID` is wrong
+- you are sending from a different Telegram account than the configured owner
+
+### Scheduler appears silent
+
+Check:
+
+- whether the task was actually created in the database
+- whether `SCHEDULER_INTERVAL` is too large
+- whether the process stayed alive long enough for the task to become due
 
 ## Technology Stack
 
 - Python 3.12+
 - `python-telegram-bot`
 - `claude-agent-sdk`
+- `apscheduler`
+- `aiosqlite`
+- `croniter`
 - `python-dotenv`
-- Hatchling-based packaging with `src/` layout
+- `uv`
 
-## Current Capabilities
+## Status
 
-At the current stage, Nano OpenClaw can:
+Nano OpenClaw is already usable as a personal automation assistant, but it is still evolving.
 
-- receive commands and messages from Telegram
-- continue prior Claude sessions
-- maintain assistant memory in `claude.md`
-- archive conversations by date
-- call Claude tools against a real workspace
-- send assistant-authored messages back through Telegram
-- keep the active runtime modular and extensible
+Current strengths:
 
-## Current Boundaries
+- persistent memory
+- workspace-centered execution
+- MCP tool integration
+- scheduled task foundation
+- modular runtime layout
 
-Nano OpenClaw is already useful, but it is intentionally still small in scope. The current version does **not** yet aim to be:
+Planned future directions:
 
-- a multi-user platform
-- an interruptible streaming agent runtime
-- a production orchestration system
-- a generalized scheduling and automation hub
-
-Those are valid future directions, but the repository is currently optimized for a single-owner personal assistant workflow.
-
-## Coming Soon
-
-The current runtime is intentionally compact, but the next stage is already clear. Areas planned for expansion include:
-
-- a richer skill system for reusable agent behaviors
-- scheduled jobs and time-based automation
-- stronger long-term memory organization and retrieval
-- cleaner interruptible execution flow
-- more interfaces beyond Telegram
-
-The goal is not to turn Nano OpenClaw into a bloated platform, but to make it a sharper and more capable personal automation runtime.
-
-## Roadmap Direction
-
-The project is evolving toward a more capable personal automation system with directions such as:
-
-- interruptible agent execution
-- richer memory retrieval strategies
-- more structured task scheduling
+- richer skill system
+- cleaner interruptible execution
+- stronger retrieval and memory organization
 - additional interfaces beyond Telegram
-- clearer separation between runtime, memory, and interface layers
-
-## Running the Project
-
-This repository is developer-focused. If you want to run it locally, the minimal path is:
-
-1. Create a `.env` file with the required Telegram and model credentials.
-2. Install dependencies.
-3. Start the runtime with:
-
-```bash
-uv run main.py
-```
-
-## Project Status
-
-Nano OpenClaw is an actively evolving personal agent project. Historical milestone versions are preserved in `ep1.py` through `ep6.py`, while the modular runtime under `src/nanoclaw/` is the current maintained implementation.
 
 ## Chinese Version
 

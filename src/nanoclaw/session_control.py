@@ -10,7 +10,7 @@
 
 import json
 
-from .config import DATE_DIR, STATE_FILE
+from .config import DATA_DIR, STATE_FILE
 
 
 def load_session_id() -> str | None:
@@ -27,7 +27,7 @@ def save_session_id(session_id: str) -> None:
     """将会话 ID 保存到文件中。"""
     # 这里再次确保 data 目录存在，是一种防御式写法：
     # 即使某些测试或脚本没有走完整启动流程，这里依旧能单独工作。
-    DATE_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(STATE_FILE, "w", encoding="utf-8") as file:
         json.dump({"session_id": session_id}, file)
 

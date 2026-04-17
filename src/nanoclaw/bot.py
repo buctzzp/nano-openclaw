@@ -1,15 +1,16 @@
 """
-Telegram handlers 模块。
+Telegram bot 模块。
 
 这一层只处理 Telegram 相关的事情：
 - 收命令
 - 收文本消息
 - 回消息
 - 做 owner 权限判断
+- set_up，初始化bot
 
 它不负责直接和 Claude SDK 打交道，真正的 LLM 调用被下放到 `agent.py`。
 这样做的好处是界限清楚：
-- handlers 关心“Telegram 交互”
+- bot 关心“Telegram 交互”
 - agent 关心“LLM 执行”
 """
 
@@ -20,7 +21,23 @@ from .agent import run_agent
 from .config import *
 from .conversation import archive_conversation
 from .logging_utils import LOGGER, configure_logging
-from .session_store import clear_session_id
+from .session_control import clear_session_id
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from nanoclaw.scheduler import setup_scheduler
+
+
+def setup_bot() -> Application:
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("end", end))
+    app.add_handler(CommandHandler("clear", clear))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    return app
+
+async def _post_init(application: Application) -> None:
+    scheduler = setup_scheduler(application.bot, str(DB_PATH))
+    scheduler.start()
+    LOGGER.info("Scheduler started")
 
 
 def is_owner(update: Update) -> bool:
@@ -34,7 +51,6 @@ async def start(update: Update, context) -> None:
         # 非 owner 保持静默，避免暴露 bot 的存在和行为细节。
         return
 
-    configure_logging()
     LOGGER.info(
         "Received /start | chat_id=%s | user_id=%s",
         getattr(update.effective_chat, "id", None),

@@ -40,6 +40,10 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL")
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
+
+# 这个是定时任务的默认执行间隔，单位是秒。
+SCHEDULER_INTERVAL = int(os.getenv("SCHEDULER_INTERVAL", "60"))
+
 # 下面这些路径是整个项目的数据布局约定：
 # - `work_space/`：给 Claude Code/Agent 当作工作目录
 # - `data/`：程序自己的状态数据，例如 session_id
@@ -48,8 +52,8 @@ OWNER_ID = int(os.getenv("OWNER_ID"))
 # 把这些内容都放在仓库目录下，有一个很大的好处：
 # 你可以直接用编辑器看到它们，不需要去系统临时目录里找。
 WORK_SPACE = BASE_DIR / "work_space"
-DATE_DIR = BASE_DIR / "data"
-STATE_FILE = DATE_DIR / "state.json"
+DATA_DIR = BASE_DIR / "data"
+STATE_FILE = DATA_DIR / "state.json"
 CONVERSATION_DIR = WORK_SPACE / "conversations"
 ASSISTANT_NAME = "小黄"
 STORE_DIR = BASE_DIR / "store"

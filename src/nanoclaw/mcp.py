@@ -12,7 +12,7 @@ from nanoclaw import db
 from claude_agent_sdk import tool
 from datetime import datetime, timedelta, timezone
 from croniter import croniter
-def create_mcp_server_tools(bot, chat_id: int,db_path: str,sent_messages: list[str] | None = None) -> list:
+def create_mcp_server_tools(bot, chat_id: int,db_path: str,sent_messages: list[str] | None = None,notify_state: dict[str, bool] | None = None) -> list:
     """创建供 Claude Agent 使用的 SDK MCP 工具。"""
 
     @tool("send_message", "发送消息给用户", {"text": str})
@@ -26,6 +26,8 @@ def create_mcp_server_tools(bot, chat_id: int,db_path: str,sent_messages: list[s
         if sent_messages is not None:
             sent_messages.append(str(args["text"]))
         
+        if notify_state is not None:
+            notify_state["sent"] = True
 
         # 这个返回结构不是随便写的，而是 Claude SDK 规定的 tool result 格式。
         # `content` 是一个列表；列表里每项都带 `type`，这里我们返回 text 类型。

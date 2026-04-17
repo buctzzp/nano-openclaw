@@ -1,7 +1,6 @@
-import logging
 import time
 from datetime import datetime, timedelta, timezone
-
+from .logging_utils import LOGGER
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from croniter import croniter
 
@@ -9,7 +8,7 @@ from nanoclaw import db
 from nanoclaw.agent import run_task_agent
 from nanoclaw.config import SCHEDULER_INTERVAL
 
-logger = logging.getLogger(__name__)
+logger = LOGGER
 
 _scheduler: AsyncIOScheduler | None = None
 

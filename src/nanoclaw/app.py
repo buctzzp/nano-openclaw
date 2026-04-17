@@ -10,36 +10,47 @@
 
 也就是说，前面拆出来的那些模块在这里汇合。
 """
-
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-
-from .config import DATE_DIR, OWNER_ID, TELEGRAM_BOT_TOKEN, WORK_SPACE
-from .handlers import clear, end, handle_message, start
+import asyncio
+from .config import OWNER_ID, WORK_SPACE,DB_PATH,STORE_DIR,DATA_DIR
+from .bot import  setup_bot
 from .logging_utils import LOGGER, configure_logging
 from .workspace import ensure_workspace_ready
+from nanoclaw.db import init_db
 
 
-def main() -> None:
-    """主函数，设置命令和消息处理器，并启动机器人。"""
+async def _prepare_runtime() -> None:
+    # Create directories
+    for d in (WORK_SPACE, STORE_DIR, DATA_DIR):
+        d.mkdir(parents=True, exist_ok=True)
 
-    # 先准备本地目录和记忆文件，再启动 bot。
-    # 这样后面的 handler / agent 运行时就可以假设这些基础设施已经存在。
-    DATE_DIR.mkdir(parents=True, exist_ok=True)
-    ensure_workspace_ready()
-    configure_logging()
+    # Initialize database
+    await init_db(str(DB_PATH))
+    LOGGER.info("Database initialized at %s", DB_PATH)
 
-    # Application 是 python-telegram-bot 的核心对象。
-    # 后面的命令处理器、消息处理器都会挂在这个对象上。
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("end", end))
-    app.add_handler(CommandHandler("clear", clear))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Ensure CLAUDE.md exists
+    ensure_workspace_ready() # 这里是对WORKSPACE目录里面进行初始化，相当于init WorkspaceDir。
+    LOGGER.info("Workspace ready at %s", WORK_SPACE)
 
+
+def _run_bot() -> None:
+    app = setup_bot()
     # 启动前打印关键运行信息，方便调试和确认配置是否正确。
     LOGGER.info("Bot is running...")
     LOGGER.info("工作目录是：%s", WORK_SPACE)
     LOGGER.info("只有用户%s可以使用这个机器人。", OWNER_ID)
-
     # `run_polling()` 会持续轮询 Telegram 服务器获取新消息。
     app.run_polling()
+
+
+
+def main() -> None:
+    """主函数，设置命令和消息处理器，并启动机器人。"""
+    configure_logging()
+
+    # 启动准备工作，创建工作目录、数据库存储目录和session会话的存储目录，启动数据库
+    LOGGER.info("Preparing runtime environment...")
+    asyncio.run(_prepare_runtime())
+    # 启动 Telegram bot
+    LOGGER.info("Starting Telegram bot...")
+    _run_bot()
+

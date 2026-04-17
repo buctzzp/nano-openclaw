@@ -6,7 +6,6 @@ The DB is only used for structured data that needs querying (scheduled tasks).
 
 import uuid
 from datetime import datetime, timezone
-
 import aiosqlite
 
 _CREATE_TABLES = """

@@ -13,7 +13,7 @@ Claude Agent 运行模块。
 """
 
 import asyncio
-from typing import Any
+from typing import Any,AsyncGenerator
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
@@ -24,7 +24,7 @@ from claude_agent_sdk import (
 from .config import *
 from .logging_utils import LOGGER, configure_logging, log_stream_message
 from .mcp import create_mcp_server_tools
-from .session_store import load_session_id, save_session_id
+from .session_control import load_session_id, save_session_id
 from .workspace import build_system_prompt
 
 # 这把锁保护的是完整的会话状态流转：
@@ -54,10 +54,12 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
     - 第一个字符串：最终要继续发给 Telegram 的文本
     - 第二个字符串：写入长期归档的文本
     """
-    configure_logging()
     sent_messages: list[str] = []
     mcp_tools = create_mcp_server_tools(bot, chat_id, db_path, sent_messages=sent_messages)
-
+    env = {"ANTHROPIC_API_KEY": ANTHROPIC_API_KEY}
+    if ANTHROPIC_BASE_URL:
+        env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE_URL
+    
     options = ClaudeAgentOptions(
         # 把 Claude Code 的工作目录固定到 `work_space/`，
         # 这样它看到的“当前项目”就是我们专门准备好的运行空间。
@@ -86,6 +88,7 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
             )
         },
         permission_mode="bypassPermissions",
+        env=env,
     )
 
     # 这里恢复的是“短期连续上下文”。
@@ -105,7 +108,7 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
     result_text: str | None = None
     idx = 0
 
-    async def _make_prompt(text: str):
+    async def _make_prompt(text: str)->AsyncGenerator[dict, None]:
         # 这里用异步生成器包装 prompt，是为了适配 SDK 的 streaming 输入形式。
         # 即使只有一条用户消息，也照样按“流”的协议喂给它。
         yield {
@@ -135,3 +138,86 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
     archive_text = "\n".join(archive_parts)
 
     return final_text, archive_text
+
+# 这个返回的文本是send message和ResultMessage的整合。
+async def run_task_agent(prompt: str, bot: Any, chat_id: int,db_path:str, notify_state: dict[str, bool] | None = None) -> str:
+    """Run agent for scheduled tasks — no session resume."""
+    sent_messages: list[str] = []
+    mcp_tools = create_mcp_server_tools(bot, chat_id, db_path, sent_messages=sent_messages,notify_state=notify_state)
+    env = {"ANTHROPIC_API_KEY": ANTHROPIC_API_KEY}
+    if ANTHROPIC_BASE_URL:
+        env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE_URL
+    options = ClaudeAgentOptions(
+        # 把 Claude Code 的工作目录固定到 `work_space/`，
+        # 这样它看到的“当前项目”就是我们专门准备好的运行空间。
+        #
+        # 这一步非常关键，因为：
+        # - `claude.md` 在这里
+        # - `conversations/` 在这里
+        # - Claude 的 Read / Grep / Glob 也会围绕这个目录工作
+        cwd=WORK_SPACE,
+        system_prompt=build_system_prompt(),
+        allowed_tools=[
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "WebSearch",
+            "WebFetch",
+            "Bash",
+        ],
+        mcp_servers={
+            # 这里注册的是一个 SDK 内嵌 MCP server，不需要单独起进程。
+            "assistant": create_sdk_mcp_server(
+                name="assistant",
+                tools=mcp_tools,
+            )
+        },
+        permission_mode="bypassPermissions",
+        env=env,
+    )
+
+    LOGGER.info(
+        "Starting Claude query | cwd=%s | permission_mode=%s | model=%s | allowed_tools=%s",
+        options.cwd,
+        options.permission_mode,
+        options.model or "default",
+        ",".join(options.allowed_tools or []) or "-",
+    )
+
+    result_text: str | None = None
+
+    async def _make_prompt(text: str)->AsyncGenerator[dict, None]:
+        # 这里用异步生成器包装 prompt，是为了适配 SDK 的 streaming 输入形式。
+        # 即使只有一条用户消息，也照样按“流”的协议喂给它。
+        yield {
+            "type": "user",
+            "message": {"role": "user", "content": text},
+        }
+    idx = 0
+    try:
+        async for message in query(prompt=_make_prompt(prompt), options=options):
+            idx += 1
+            log_stream_message(idx, message)
+            if isinstance(message, ResultMessage):
+                # 最终结果只认 ResultMessage。
+                # 这样“最终回复”只有一个真相源，不再混用 AssistantMessage 的 text。
+                if message.result:
+                    result_text = message.result
+    except Exception as error:
+        LOGGER.error("Task agent error: %s", error)
+        error_text = f"Error: {error}"
+        return error_text
+
+    final_text = (result_text or "").strip() or "Sorry, I couldn't get a response from Claude."
+
+    archive_parts = [text.strip() for text in sent_messages if text and text.strip()]
+    archive_parts.append(final_text)
+    archive_text = "\n".join(archive_parts)
+
+
+    return archive_text or "Task completed."
+
+
+
