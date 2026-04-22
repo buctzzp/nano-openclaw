@@ -21,16 +21,20 @@ from .agent import run_agent
 from .config import *
 from .conversation import archive_conversation
 from .logging_utils import LOGGER, configure_logging
+from .media import build_image_prompt, format_image_markdown, ingest_telegram_photo
 from .session_control import clear_session_id
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from nanoclaw.scheduler import setup_scheduler
 
 
 def setup_bot() -> Application:
+    # 这个app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
+    # 的_post_init是怎么运行的？
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("end", end))
     app.add_handler(CommandHandler("clear", clear))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     return app
 
@@ -56,18 +60,23 @@ async def start(update: Update, context) -> None:
         getattr(update.effective_chat, "id", None),
         getattr(update.effective_user, "id", None),
     )
-    res = """
-    Hello! I'm your Telegram nano_openclaw.
-    我可以记住我们之间的对话，即使重启也不会忘记！
-    试试：
-    1.告诉我你的名字
-    2.重启程序
-    3.再次告诉我你的名字，看看我还记不记得你。
-    命令：
-    /start - 开始对话
-    /end - 结束对话
-    /clear - 清除会话记录，重新开始
-    """
+    res = f"""
+{ASSISTANT_NAME} 已上线。
+
+我现在可以：
+1. 文字对话：把你的问题交给 Agent 处理，并归档对话。
+2. 图片收发：保存你发来的图片，也可以把工作区里的图片发回 Telegram。
+3. 截图发送：通过 take_screenshot 工具截图，再通过 send_image 发给你。
+4. 定时任务：创建、查看、暂停、恢复、取消提醒任务。
+5. 工作区文件：在 work_space 内读写文件，沉淀长期记忆和资产。
+
+常用命令：
+/start - 查看能力和使用提示
+/clear - 清除当前 Claude session，重新开始短期上下文
+/end - 结束当前对话提示
+
+提示：如果你发送“图片 + 文字”，文字会作为图片配文一起处理。
+""".strip()
     await update.message.reply_text(res)
 
 
@@ -118,3 +127,37 @@ async def handle_message(update: Update, context) -> None:
     # 归档文本里既有过程中通过 `send_message` 发出去的消息，
     # 也有最后的 ResultMessage 文本。
     archive_conversation(update.message.text, archive_text)
+
+
+async def handle_photo(update: Update, context) -> None:
+    """处理用户发送的 Telegram 图片消息。"""
+    if not is_owner(update):
+        return
+
+    if not update.message or not update.message.photo:
+        return
+
+    chat_id = update.effective_chat.id
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+
+    try:
+        asset = await ingest_telegram_photo(update, chat_id)
+    except Exception as error:
+        LOGGER.error("Failed to ingest Telegram photo: %s", error)
+        await update.message.reply_text(f"图片保存失败：{error}")
+        return
+
+    response_text, archive_text = await run_agent(
+        # build_image_prompt也就是获取图片的说明
+        build_image_prompt(asset),
+        context.bot,
+        chat_id,
+        str(DB_PATH),
+    )
+
+    max_length = 4000
+    for i in range(0, len(response_text), max_length):
+        await update.message.reply_text(response_text[i : i + max_length])
+
+    # format_image_markdown(asset) 是把图片的 markdown 格式也加到归档里，这样在查看归档的时候就能看到图片了。
+    archive_conversation(format_image_markdown(asset), archive_text)

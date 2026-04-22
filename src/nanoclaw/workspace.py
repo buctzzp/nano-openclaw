@@ -10,7 +10,7 @@
 - `workspace.py` 负责“真的把这些路径和模板落实到磁盘上”
 """
 
-from .config import CLAUDE_MD_TEMPLATE, CONVERSATION_DIR, WORK_SPACE
+from .config import ASSET_DIR, CLAUDE_MD_TEMPLATE, CONVERSATION_DIR, IMAGE_ASSET_DIR, WORK_SPACE
 
 
 def ensure_workspace_ready() -> None:
@@ -23,6 +23,11 @@ def ensure_workspace_ready() -> None:
     # 直接“确保它存在”就可以了。
     WORK_SPACE.mkdir(parents=True, exist_ok=True)
     CONVERSATION_DIR.mkdir(parents=True, exist_ok=True)
+    ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    (IMAGE_ASSET_DIR / "telegram").mkdir(parents=True, exist_ok=True)
+    (IMAGE_ASSET_DIR / "screenshots").mkdir(parents=True, exist_ok=True)
+    (ASSET_DIR / "videos").mkdir(parents=True, exist_ok=True)
+    (ASSET_DIR / "audio").mkdir(parents=True, exist_ok=True)
 
     claude_md_path = WORK_SPACE / "claude.md"
     if not claude_md_path.exists():

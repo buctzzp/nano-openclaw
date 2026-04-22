@@ -17,6 +17,8 @@ from typing import Any,AsyncGenerator
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
+    PermissionResultAllow,
+    PermissionResultDeny,
     ResultMessage,
     create_sdk_mcp_server,
     query,
@@ -33,6 +35,73 @@ from .workspace import build_system_prompt
 # 如果这段流程并发执行，就可能出现多个请求同时拿着同一个旧 session_id
 # 去继续会话，最后谁覆盖谁就不可控了。
 _agent_lock = asyncio.Lock()
+
+_MEDIA_TASK_KEYWORDS = (
+    "截图",
+    "截屏",
+    "图片",
+    "照片",
+    "发图",
+    "发送图片",
+    "screenshot",
+    "image",
+    "photo",
+)
+
+_MEDIA_TASK_HINT = """
+
+[媒体工具使用规则]
+- 托管媒体统一放在 work_space/assets/ 下，尤其是 assets/images/...。
+- 不要手动创建 work_space/images，也不要把新图片或截图保存到 work_space/images。
+- 如果用户要求截图，优先调用 MCP 工具 take_screenshot。
+- 如果需要把已有图片发给用户，调用 MCP 工具 send_image。
+- 正常流程是：take_screenshot -> send_image，而不是手写 Bash screencapture。
+"""
+
+
+def _build_agent_env() -> dict[str, str]:
+    """
+    构造传给 Claude Agent SDK 的环境变量。
+
+    SDK 最终会把这里的内容传给 Claude Code 子进程。子进程环境变量的
+    value 必须是字符串，不能是 None；否则启动阶段就会报：
+        expected str, bytes or os.PathLike object, not NoneType
+
+    所以这里采用“只传已经配置好的值”的策略：
+    - 如果 `.env` 里配置了 `ANTHROPIC_API_KEY`，就显式传给 SDK
+    - 如果没配置，就不传这个键，让 Claude Code 使用自身已有的登录态/配置
+    - `ANTHROPIC_BASE_URL` 同理，只在非空时传入
+    """
+    env: dict[str, str] = {}
+    if ANTHROPIC_API_KEY:
+        env["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY
+    if ANTHROPIC_BASE_URL:
+        env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE_URL
+    return env
+
+
+def _apply_task_hints(prompt: str) -> str:
+    """按需给媒体相关任务追加短规则，避免把所有规则都塞进长期记忆。"""
+    prompt_lower = prompt.lower()
+    if any(keyword in prompt_lower for keyword in _MEDIA_TASK_KEYWORDS):
+        return prompt.rstrip() + _MEDIA_TASK_HINT
+    return prompt
+
+
+async def _can_use_tool(tool_name: str, tool_input: dict[str, Any], context: Any):
+    """对高风险或易跑偏的工具调用做确定性拦截。"""
+    if tool_name == "Bash":
+        command = str(tool_input.get("command", ""))
+        if "screencapture" in command:
+            return PermissionResultDeny(
+                message=(
+                    "Do not call screencapture manually. Use the MCP tool "
+                    "take_screenshot so the screenshot is stored under "
+                    "work_space/assets/images/screenshots, then call send_image."
+                )
+            )
+
+    return PermissionResultAllow()
 
 
 async def run_agent(prompt: str, bot: Any, chat_id: int, db_path:str) -> tuple[str, str]:
@@ -56,9 +125,7 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
     """
     sent_messages: list[str] = []
     mcp_tools = create_mcp_server_tools(bot, chat_id, db_path, sent_messages=sent_messages)
-    env = {"ANTHROPIC_API_KEY": ANTHROPIC_API_KEY}
-    if ANTHROPIC_BASE_URL:
-        env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE_URL
+    env = _build_agent_env()
     
     options = ClaudeAgentOptions(
         # 把 Claude Code 的工作目录固定到 `work_space/`，
@@ -89,6 +156,7 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
         },
         permission_mode="bypassPermissions",
         env=env,
+        can_use_tool=_can_use_tool,
     )
 
     # 这里恢复的是“短期连续上下文”。
@@ -113,7 +181,7 @@ async def _run_inner_agent(prompt: str, bot: Any, chat_id: int,db_path:str) -> t
         # 即使只有一条用户消息，也照样按“流”的协议喂给它。
         yield {
             "type": "user",
-            "message": {"role": "user", "content": text},
+            "message": {"role": "user", "content": _apply_task_hints(text)},
         }
 
     try:
@@ -144,9 +212,7 @@ async def run_task_agent(prompt: str, bot: Any, chat_id: int,db_path:str, notify
     """Run agent for scheduled tasks — no session resume."""
     sent_messages: list[str] = []
     mcp_tools = create_mcp_server_tools(bot, chat_id, db_path, sent_messages=sent_messages,notify_state=notify_state)
-    env = {"ANTHROPIC_API_KEY": ANTHROPIC_API_KEY}
-    if ANTHROPIC_BASE_URL:
-        env["ANTHROPIC_BASE_URL"] = ANTHROPIC_BASE_URL
+    env = _build_agent_env()
     options = ClaudeAgentOptions(
         # 把 Claude Code 的工作目录固定到 `work_space/`，
         # 这样它看到的“当前项目”就是我们专门准备好的运行空间。
@@ -176,6 +242,7 @@ async def run_task_agent(prompt: str, bot: Any, chat_id: int,db_path:str, notify
         },
         permission_mode="bypassPermissions",
         env=env,
+        can_use_tool=_can_use_tool,
     )
 
     LOGGER.info(
@@ -193,7 +260,7 @@ async def run_task_agent(prompt: str, bot: Any, chat_id: int,db_path:str, notify
         # 即使只有一条用户消息，也照样按“流”的协议喂给它。
         yield {
             "type": "user",
-            "message": {"role": "user", "content": text},
+            "message": {"role": "user", "content": _apply_task_hints(text)},
         }
     idx = 0
     try:
@@ -218,6 +285,4 @@ async def run_task_agent(prompt: str, bot: Any, chat_id: int,db_path:str, notify
 
 
     return archive_text or "Task completed."
-
-
 

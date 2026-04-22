@@ -13,6 +13,8 @@ src_path = str(SRC_DIR)
 if src_path in sys.path:
     #print(f"注意：{src_path} 已经在 sys.path 中了，可能是之前的某个操作加过了。")
     sys.path.remove(src_path)
+
+# 把 src_path 插入到 sys.path 的最前面，确保我们导入的模块都是 src/ 下面的，而不是系统全局安装的同名模块。
 sys.path.insert(0, src_path)
 
 
@@ -20,17 +22,8 @@ from nanoclaw import app
 
 
 def main() -> None:
-    """
-    把启动流程委托给真正的应用模块。
-
-    这样设计的好处是：
-    - `main.py` 很稳定，几乎不需要改
-    - 真正的业务启动逻辑都集中在包内，便于测试和维护
-    """
     app.main()
 
 
 if __name__ == "__main__":
     main()
-    #print(SRC_DIR)
-    #print(sys.path)
